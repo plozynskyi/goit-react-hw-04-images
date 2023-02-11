@@ -1,4 +1,4 @@
-import { Component } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { ToastContainer, toast } from 'react-toastify';
 
 import Searchbar from './Searchbar/Searchbar';
@@ -13,105 +13,102 @@ import { searchImage } from 'shared/services/image-api';
 import { AppSection } from './app.styled';
 import 'react-toastify/dist/ReactToastify.css';
 
-class App extends Component {
-  state = {
-    searchQuery: '',
-    gallery: [],
-    page: 1,
-    error: null,
-    loading: false,
-    showModal: false,
-    imageDetails: {},
-    loadMoreButton: false,
-  };
+const App = () => {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [gallery, setGallery] = useState([]);
+  const [page, setPage] = useState(1);
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [imageDetails, setImageDetails] = useState({});
+  const [loadMoreButton, setLoadMoreButton] = useState(false);
 
-  componentDidUpdate(prevProps, prevState) {
-    const { searchQuery, page } = this.state;
-    const prevSearchQuery = prevState.searchQuery;
-    const prevPage = prevState.page;
-
-    if (prevSearchQuery !== searchQuery || prevPage !== page) {
-      this.fetchImage();
+  useEffect(() => {
+    if (!searchQuery) {
+      return;
     }
-  }
 
-  async fetchImage() {
-    try {
-      this.setState({ loading: true });
-      const { searchQuery, page } = this.state;
-      const { hits } = await searchImage(searchQuery, page);
+    const fetchImage = async () => {
+      try {
+        setLoading(true);
+        const { hits } = await searchImage(searchQuery, page);
+        setGallery(prevItems => [...prevItems, ...hits]);
 
-      this.setState(({ gallery }) => ({
-        gallery: [...gallery, ...hits],
-      }));
-
-      if (hits.length === 0) {
-        this.setState({ gallery: [], loadMoreButton: false });
-        return toast.warn(
-          `No images for ${searchQuery}. Please try something else`
-        );
+        if (hits.length === 0) {
+          setGallery([]);
+          setLoading(false);
+          return toast.warn(
+            `No images for ${searchQuery}. Please try something else`
+          );
+        }
+        if (hits.length <= 11) {
+          setLoading(false);
+          toast.warn(
+            `We're sorry, but you've reached the end of search results.`
+          );
+        } else {
+          setLoadMoreButton(true);
+        }
+      } catch (error) {
+        setError(error.message);
+        setLoadMoreButton(false);
+      } finally {
+        setLoading(false);
       }
-      if (hits.length <= 11) {
-        this.setState({ loadMoreButton: false });
+    };
+
+    fetchImage();
+  }, [searchQuery, page]);
+
+  const newSearch = useCallback(
+    state => {
+      if (state.searchQuery !== searchQuery) {
+        setSearchQuery(state.searchQuery);
+        setGallery([]);
+        setPage(1);
+      } else
         toast.warn(
-          `We're sorry, but you've reached the end of search results.`
+          'Please enter new text for search, the result of current search is already shown'
         );
-      } else {
-        this.setState({ loadMoreButton: true });
-      }
-    } catch (error) {
-      this.setState({ error: error.message, loadMoreButton: false });
-    } finally {
-      this.setState({ loading: false });
-    }
-  }
+      setLoadMoreButton(false);
+    },
+    [searchQuery]
+  );
 
-  loadMore = () => {
-    this.setState({ loadMoreButton: false });
-    this.setState(({ page }) => ({ page: page + 1 }));
-  };
+  const toggleModal = useCallback(
+    (largeImageURL, tags) => {
+      if (!showModal) {
+        setShowModal(true);
+        setImageDetails({ largeImageURL, tags });
+      } else setShowModal(false);
+    },
+    [showModal]
+  );
 
-  toggleModal = (largeImageURL, tags) => {
-    this.setState(({ showModal }) => ({
-      showModal: !showModal,
-      imageDetails: { largeImageURL, tags },
-    }));
-  };
+  const loadMore = useCallback(() => {
+    setLoadMoreButton(false);
+    setPage(page => page + 1);
+  }, []);
 
-  newSearch = ({ searchQuery }) => {
-    if (searchQuery !== this.state.searchQuery) {
-      this.setState({
-        searchQuery,
-        page: 1,
-        gallery: [],
-      });
-    } else
-      toast.warn(
-        'Please enter new text for search, the result of current search is already shown'
-      );
-  };
-
-  render() {
-    const { newSearch, toggleModal, loadMore } = this;
-    const { showModal, gallery, loading, imageDetails, loadMoreButton, error } =
-      this.state;
-
-    return (
-      <AppSection>
-        <Searchbar onSubmit={newSearch} />
-        {Boolean(gallery.length) && (
-          <ImageGallery openModal={toggleModal} items={gallery} />
-        )}
-        {Boolean(loading) && <Loader />}
-        {Boolean(loadMoreButton) && <Button loadMore={loadMore} />}
-        {Boolean(error) && <ErrorNotification errorMessage={error} />}
-        {Boolean(showModal) && (
-          <Modal toggleModal={toggleModal} urlImage={imageDetails} />
-        )}
-        <ToastContainer theme="light" autoClose={3000} />
-      </AppSection>
-    );
-  }
-}
+  return (
+    <AppSection>
+      <Searchbar onSubmit={newSearch} />
+      {Boolean(gallery.length) && (
+        <ImageGallery openModal={toggleModal} items={gallery} />
+      )}
+      {Boolean(loading) && <Loader />}
+      {Boolean(loadMoreButton) && <Button loadMore={loadMore} />}
+      {Boolean(error) && <ErrorNotification errorMessage={error} />}
+      {Boolean(showModal) && (
+        <Modal
+          toggleModal={toggleModal}
+          urlImage={imageDetails}
+          setImageDetails={setImageDetails}
+        />
+      )}
+      <ToastContainer theme="light" autoClose={3000} />
+    </AppSection>
+  );
+};
 
 export default App;
